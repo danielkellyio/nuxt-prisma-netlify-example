@@ -1,6 +1,7 @@
 // The TS client will be generated in the `prisma/client` directory
 generator client {
     provider = "prisma-client-js"
+    output   = "./node_modules/.prisma/client"
 }
 
 // The database provider is postgresql and the url is fetched from the DATABASE_URL environment variable
