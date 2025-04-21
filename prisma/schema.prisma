@@ -1,0 +1,30 @@
+// The TS client will be generated in the `prisma/client` directory
+generator client {
+    provider = "prisma-client-js"
+    output   = "./client"
+}
+
+// The database provider is postgresql and the url is fetched from the DATABASE_URL environment variable
+datasource db {
+    provider  = "postgresql"
+    url       = env("DATABASE_URL")
+    directUrl = env("DIRECT_URL")
+}
+
+// Model all the data with a `model` for each table
+
+model Posts {
+    id        String     @id @default(uuid())
+    title     String
+    content   String?
+    published Boolean    @default(false)
+    createdAt DateTime   @default(now())
+    Comments  Comments[]
+}
+
+model Comments {
+    id      String @id @default(uuid())
+    content String
+    post    Posts  @relation(fields: [postId], references: [id])
+    postId  String
+}
