@@ -11,7 +11,7 @@ In this guide, we'll walk through building a complete Nuxt application with Pris
 - Seed your database with test data
 - Build server API endpoints in Nuxt
 - Connect your frontend to those endpoints
-- and Deploy your application to Netlify
+- Create a GitHub Actions workflow to deploy migrations to production
 
 Whether you're new to ORMs or looking to level up your Nuxt stack, this tutorial will give you a solid foundation for building data-driven applications with modern tools and best practices.
 
@@ -60,10 +60,10 @@ Create a `prisma/schema.prisma` file with your data model:
 ```typescript
 // prisma/schema.prisma
 
-// The TS client will be generated in the `prisma/client` directory
+// The TS client will be generated in the `node_modules/.prisma/client` directory
 generator client {
     provider = "prisma-client-js"
-    output   = "./client"
+    output   = "./node_modules/.prisma/client"
 }
 
 // The database provider is postgresql and the url is fetched from the DATABASE_URL environment variable
@@ -198,7 +198,7 @@ Next, we'll create the seed file at `prisma/seed.ts`. This imports the generated
 
 ```ts
 // prisma/seed.ts
-import { PrismaClient } from "./client";
+import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -329,31 +329,78 @@ The `useFetch` composable handles data fetching with automatic TypeScript typing
 
 ![Nuxt Fetch](./type-safe-useFetch.jpg)
 
-## Deploy Nuxt App to Netlify
+## Create a GitHub Actions Workflow to Deploy Migrations to Production
 
-At this point, we've got a working Nuxt application with Prisma ORM connected to a PostgreSQL database! 🎉 Now let's deploy it to Netlify for the world to see!
+Now that everything works locally, we can create a GitHub Actions workflow to deploy migrations to production. Make sure you have a GitHub repository for your project and have a hosted Supabase project on [supabase.com](https://supabase.com).
 
-First, make sure you have a Netlify account and have a hosted Supabase project on [supabase.com](https://supabase.com).
+```yaml
+// .github/workflows/database-migrations.yml
+name: Database Migrations
 
-Deploying your Nuxt + Prisma application to Netlify is seamless:
+on:
+  push:
+    paths:
+      - prisma/migrations/**
+    branches:
+      - main
+  workflow_dispatch:
 
-1. Create and push your project to a GitHub repository
-2. Connect Netlify to this repository through their dashboard
-3. Configure your build settings (Netlify will auto-detect most Nuxt settings)
-4. Set up your environment variables (particularly `DATABASE_URL` for your production database)
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
 
-Netlify will automatically build and deploy your application whenever you push changes to your repository.
+    steps:
+      - uses: actions/checkout@v3
 
-For the database, you'll want to use Supabase's hosted PostgreSQL in production. Create a project on Supabase.com, set up your tables (or run your migrations against it), and use the connection string in your Netlify environment variables.
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "latest"
+          cache: "npm"
 
-## Next Steps
+      - name: Install dependencies
+        run: npm ci
 
-Now that you have a functioning Nuxt application with Prisma ORM connected to a PostgreSQL database, consider these enhancements:
+      - name: Run migrations
+        run: npx prisma migrate deploy
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-1. Add authentication with Supabase Auth or Nuxt Auth
-2. Create CRUD operations for posts and comments
-3. Implement real-time updates using Supabase Realtime
-4. Add search functionality using Prisma's filtering capabilities
-5. Optimize your database queries with Prisma's `select` and `include` options
+```
 
-With the foundation you've built, your application can grow in many directions while maintaining a clean architecture and type-safe database interactions.
+Notice that we have a `DIRECT_URL` and a `DATABASE_URL` environment variable. We'll need to add these to our repository secrets. You can do that by going to the repository settings and adding them to the `Secrets and Variables > Actions` section.
+
+![Add secrets to GitHub Actions](./github-actions.jpg)
+
+The reason for the 2 variables is as follows:
+
+- `DIRECT_URL` is the connection string for running migrations
+- `DATABASE_URL` is the connection string for the application
+
+In the case of an app running in a serverless environment like Netlify, the `DIRECT_URL` must be different from the `DATABASE_URL` used by the application. This means you'll also need to set the schema.prisma `directUrl` to the `DIRECT_URL` environment variable.
+
+```typescript
+// prisma/schema.prisma
+datasource db {
+    provider  = "postgresql"
+    url       = env("DATABASE_URL")
+    directUrl = env("DIRECT_URL")
+}
+```
+
+The values for each of these can be found in the dashboard of your hosted Supabase project when clicking the "Connect" button in the header.
+
+![Connect button in the Supabase dashboard](./connect-button.jpg)
+
+Then in the modal overlay, you can go to ORMs > Prisma to see the values for each of the variables.
+
+![Prisma values in the Supabase dashboard](./prisma-connection.jpg)
+
+## Conclusion
+
+You've now got a fully functioning Nuxt application with Prisma ORM connected to a PostgreSQL database! 🎉 You can delploy it to platforms like Netlify, Vercel, or any other serverless platform.
+
+Note that as of the time of this writing, there is a bug with Prisma client version 6 that prevents it from working on Netlify. If you're using Netlify, you'll need to use version 5 of the Prisma client.
+
+You can find the source code for this project on [GitHub](https://github.com/danielkellyio/nuxt-prisma-netlify-example). Feel free to use it as a starting point for your own projects and adapt it to your own needs.
